@@ -9,10 +9,7 @@ export interface LogoVariant {
   id: string;
   url: string;
   score: number;
-  metadata: {
-    model: string;
-    prompt: string;
-  };
+  metadata: { model: string; prompt: string };
 }
 
 export interface GenerateLogoResponse {
@@ -39,8 +36,8 @@ export const generateLogo = async (
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to trigger generation: ${errorText}`);
+    const text = await response.text();
+    throw new Error(`Failed to trigger generation: ${text}`);
   }
 
   return response.json();
@@ -49,11 +46,8 @@ export const generateLogo = async (
 export const getJobResult = async (
   jobId: string
 ): Promise<JobResultResponse> => {
-  // Example placeholder — replace with your actual result source (n8n or Aiven)
   const url = `/results/${jobId}.json`;
-
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) return { status: "queued" };
-
   return res.json();
 };
