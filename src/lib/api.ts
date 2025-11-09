@@ -1,5 +1,3 @@
-import { supabase } from "@/integrations/supabase/client";
-
 export interface GenerateLogoPayload {
   description: string;
   style?: string;
@@ -20,6 +18,7 @@ export interface LogoVariant {
 export interface GenerateLogoResponse {
   job_id: string;
   status: string;
+  message?: string;
 }
 
 export interface JobResultResponse {
@@ -31,51 +30,30 @@ export interface JobResultResponse {
 export const generateLogo = async (
   payload: GenerateLogoPayload
 ): Promise<GenerateLogoResponse> => {
-  // Log that we're invoking the Supabase Edge Function from the client.
-  // This helps confirm the frontend is triggering the server-side function (which reads N8N_WEBHOOK_URL).
-  const CLIENT_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-  console.log('Calling generate edge function', { supabaseUrl: CLIENT_SUPABASE_URL, payload });
-  
-  const { data, error } = await supabase.functions.invoke('generate', {
-    body: {
-      description: payload.description,
-      style: payload.style,
-      colors: payload.colors,
-      files: payload.files ? await Promise.all(
-        payload.files.map(async (file) => {
-          const reader = new FileReader();
-          return new Promise<string>((resolve) => {
-            reader.onload = () => resolve(reader.result as string);
-            reader.readAsDataURL(file);
-          });
-        })
-      ) : [],
-    }
+  console.log("Calling backend with payload:", payload);
+
+  const response = await fetch("/api/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
   });
 
-  if (error) {
-    console.error('Error calling generate function:', error);
-    throw new Error(error.message);
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to trigger generation: ${errorText}`);
   }
 
-  console.log('Generate response:', data);
-  return data as GenerateLogoResponse;
+  return response.json();
 };
 
 export const getJobResult = async (
   jobId: string
 ): Promise<JobResultResponse> => {
-  console.log('Fetching result for job:', jobId);
-  
-  const { data, error } = await supabase.functions.invoke('result', {
-    body: { job_id: jobId }
-  });
+  // Example placeholder — replace with your actual result source (n8n or Aiven)
+  const url = `/results/${jobId}.json`;
 
-  if (error) {
-    console.error('Error fetching result:', error);
-    throw new Error(error.message);
-  }
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) return { status: "queued" };
 
-  console.log('Result response:', data);
-  return data as JobResultResponse;
+  return res.json();
 };

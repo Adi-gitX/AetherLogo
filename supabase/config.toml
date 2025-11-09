@@ -1,7 +1,0 @@
-project_id = "twofzxqbbbwnkutgyqvh"
-
-[functions.generate]
-verify_jwt = false
-
-[functions.result]
-verify_jwt = false
