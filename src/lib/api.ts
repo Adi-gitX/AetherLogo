@@ -31,7 +31,10 @@ export interface JobResultResponse {
 export const generateLogo = async (
   payload: GenerateLogoPayload
 ): Promise<GenerateLogoResponse> => {
-  console.log('Calling generate edge function with payload:', payload);
+  // Log that we're invoking the Supabase Edge Function from the client.
+  // This helps confirm the frontend is triggering the server-side function (which reads N8N_WEBHOOK_URL).
+  const CLIENT_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+  console.log('Calling generate edge function', { supabaseUrl: CLIENT_SUPABASE_URL, payload });
   
   const { data, error } = await supabase.functions.invoke('generate', {
     body: {

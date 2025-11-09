@@ -16,6 +16,8 @@ const Index = () => {
 
   const handleFormSubmit = async (formData: any) => {
     try {
+      // Log the act of submitting the form and which backend we'll call.
+      console.log('User clicked Generate. Invoking server generate function with payload:', formData, 'supabaseUrl:', import.meta.env.VITE_SUPABASE_URL);
       setViewState("generating");
 
       // Call the API to generate logos
