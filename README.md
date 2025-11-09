@@ -1,4 +1,4 @@
-# AetherLogo AI - Professional Logo Generation Platform
+# Commet AI - Professional Logo Generation Platform
 
 A modern, minimalist web application for AI-powered logo generation built with React, TypeScript, and Lovable Cloud.
 
@@ -23,6 +23,7 @@ A modern, minimalist web application for AI-powered logo generation built with R
 ## Architecture
 
 ### Frontend Structure
+
 ```
 src/
 ├── components/
@@ -40,9 +41,11 @@ src/
 ### Backend Endpoints
 
 #### POST `/functions/v1/generate`
+
 Accepts logo generation request and returns job ID.
 
 **Request Body:**
+
 ```json
 {
   "description": "Minimal geometric logo for NovaTech",
@@ -53,6 +56,7 @@ Accepts logo generation request and returns job ID.
 ```
 
 **Response:**
+
 ```json
 {
   "job_id": "uuid",
@@ -61,9 +65,11 @@ Accepts logo generation request and returns job ID.
 ```
 
 #### POST `/functions/v1/result`
+
 Fetches generation result by job ID.
 
 **Request Body:**
+
 ```json
 {
   "job_id": "uuid"
@@ -71,6 +77,7 @@ Fetches generation result by job ID.
 ```
 
 **Response:**
+
 ```json
 {
   "status": "completed",
@@ -91,10 +98,12 @@ Fetches generation result by job ID.
 ## Environment Variables
 
 Required secrets (configured in Lovable Cloud):
+
 - `N8N_WEBHOOK_URL` - n8n webhook endpoint for AI pipeline
 - `RESULT_BASE_URL` - Base URL for result storage
 
 Auto-configured by Lovable Cloud:
+
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
 - `VITE_SUPABASE_PROJECT_ID`
@@ -112,12 +121,14 @@ npm run dev
 ## Deployment
 
 ### Vercel
+
 1. Connect your GitHub repository to Vercel
 2. Configure environment variables in Vercel dashboard:
    - Add all Supabase variables from Lovable Cloud
 3. Deploy
 
 ### Backend Configuration
+
 Edge functions are automatically deployed with Lovable Cloud. No manual deployment needed.
 
 ## Integration with n8n Workflow
@@ -141,11 +152,14 @@ The app is designed to integrate with an n8n workflow:
 ## Customization
 
 ### Design System
+
 All colors and styles are defined in:
+
 - `src/index.css` - CSS variables
 - `tailwind.config.ts` - Tailwind configuration
 
 ### Mock vs Production
+
 The app currently returns mock data when `RESULT_BASE_URL` is not configured or fetch fails. This allows full development and testing without a live AI backend.
 
 ## Roadmap
