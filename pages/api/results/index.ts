@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import type { NextApiRequest, NextApiResponse } from "next";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -8,10 +9,19 @@ const corsHeaders: Record<string, string> = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-// Simple in-memory cache for temporary result storage (for Vercel)
-const memoryStore: Record<string, any> = {};
+// In-memory cache (useful for serverless + dev)
+const memoryStore: Record<string, unknown> = {};
 
-export default async function handler(req: any, res: any) {
+interface ResultPayload {
+  job_id: string;
+  status?: string;
+  variants?: unknown[];
+}
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+): Promise<void> {
   Object.entries(corsHeaders).forEach(([k, v]) => res.setHeader(k, v));
 
   if (req.method === "OPTIONS") {
@@ -19,22 +29,21 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  // 🟢 Handle GET requests — frontend polling
+  // 🟢 GET /api/results?job_id=...
   if (req.method === "GET") {
-    const jobId = req.query.job_id;
-
+    const jobId = req.query.job_id as string;
     if (!jobId) {
       res.status(400).json({ error: "Missing job_id parameter" });
       return;
     }
 
-    // 1️⃣ Check memory cache first
+    // 1) Memory store
     if (memoryStore[jobId]) {
       res.status(200).json(memoryStore[jobId]);
       return;
     }
 
-    // 2️⃣ Try local file (for dev)
+    // 2) Local file
     try {
       const filePath = path.join(
         process.cwd(),
@@ -47,9 +56,11 @@ export default async function handler(req: any, res: any) {
         res.status(200).json(data);
         return;
       }
-    } catch {}
+    } catch (error) {
+      console.warn("/api/results GET file read failed", error);
+    }
 
-    // 3️⃣ Try database (optional)
+    // 3) Database fallback
     if (process.env.DATABASE_URL) {
       try {
         const { Client } = await import("pg");
@@ -63,12 +74,13 @@ export default async function handler(req: any, res: any) {
           [jobId]
         );
         await client.end();
+
         if (result.rows.length > 0) {
           res.status(200).json(result.rows[0]);
           return;
         }
-      } catch (e: any) {
-        console.warn("/api/results GET DB read failed:", e.message);
+      } catch (dbErr) {
+        console.warn("/api/results GET DB read failed", dbErr);
       }
     }
 
@@ -76,26 +88,10 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  // 🟠 Handle POST requests — n8n webhook sends here
+  // 🟢 POST /api/results — n8n sends back generation result
   if (req.method === "POST") {
-    let body = req.body;
-
-    // Handle raw body if not parsed automatically
-    if (!body) {
-      body = await new Promise((resolve) => {
-        let data = "";
-        req.on("data", (chunk: Buffer) => (data += chunk.toString()));
-        req.on("end", () => {
-          try {
-            resolve(data ? JSON.parse(data) : {});
-          } catch {
-            resolve({});
-          }
-        });
-      });
-    }
-
-    const { job_id: jobId, status, variants } = body || {};
+    const body = (req.body || {}) as ResultPayload;
+    const { job_id: jobId, status, variants } = body;
 
     if (!jobId) {
       res.status(400).json({ error: "job_id is required" });
@@ -109,10 +105,10 @@ export default async function handler(req: any, res: any) {
       timestamp: new Date().toISOString(),
     };
 
-    // Store in memory
+    // 1) Memory cache
     memoryStore[jobId] = result;
 
-    // Also try to persist to disk (for local dev)
+    // 2) Disk storage
     try {
       const dir = path.join(process.cwd(), "public", "results");
       await fs.promises.mkdir(dir, { recursive: true });
@@ -122,11 +118,11 @@ export default async function handler(req: any, res: any) {
         JSON.stringify(result, null, 2),
         "utf8"
       );
-    } catch (e: any) {
-      console.warn("/api/results: write failed", e.message);
+    } catch (err) {
+      console.warn("/api/results write failed", err);
     }
 
-    // Optional DB storage
+    // 3) DB write
     if (process.env.DATABASE_URL) {
       try {
         const { Client } = await import("pg");
@@ -135,7 +131,6 @@ export default async function handler(req: any, res: any) {
           ssl: { rejectUnauthorized: false },
         });
         await client.connect();
-
         await client.query(`
           CREATE TABLE IF NOT EXISTS logo_jobs (
             job_id TEXT PRIMARY KEY,
@@ -144,17 +139,16 @@ export default async function handler(req: any, res: any) {
             created_at TIMESTAMP DEFAULT NOW()
           )
         `);
-
         await client.query(
           `INSERT INTO logo_jobs (job_id, status, variants)
            VALUES ($1, $2, $3)
-           ON CONFLICT (job_id) DO UPDATE SET status = EXCLUDED.status, variants = EXCLUDED.variants`,
+           ON CONFLICT (job_id)
+           DO UPDATE SET status = EXCLUDED.status, variants = EXCLUDED.variants`,
           [jobId, result.status, JSON.stringify(result.variants)]
         );
-
         await client.end();
-      } catch (e: any) {
-        console.warn("/api/results: DB write failed", e.message);
+      } catch (dbErr) {
+        console.warn("/api/results DB write failed", dbErr);
       }
     }
 
@@ -162,6 +156,5 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  // 🚫 Fallback for other methods
   res.status(405).json({ error: "Method not allowed" });
 }

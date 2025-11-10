@@ -1,14 +1,31 @@
 import { randomUUID } from "crypto";
+import type { NextApiRequest, NextApiResponse } from "next";
 
-const corsHeaders = {
+const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
 
-export default async function handler(req: any, res: any) {
-  // Handle CORS preflight
+interface GenerateRequestBody {
+  description?: string;
+  style?: string;
+  colors?: string[];
+  files?: unknown[];
+}
+
+interface GenerateResponseBody {
+  job_id?: string;
+  status?: "queued" | "failed";
+  message?: string;
+  error?: string;
+}
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse<GenerateResponseBody>
+): Promise<void> {
   if (req.method === "OPTIONS") {
     Object.entries(corsHeaders).forEach(([k, v]) => res.setHeader(k, v));
     res.status(200).end("ok");
@@ -16,14 +33,16 @@ export default async function handler(req: any, res: any) {
   }
 
   if (req.method !== "POST") {
+    Object.entries(corsHeaders).forEach(([k, v]) => res.setHeader(k, v));
     res.status(405).json({ error: "Method not allowed" });
     return;
   }
 
   try {
-    const { description, style, colors, files } = req.body || {};
+    const { description, style, colors, files } =
+      (req.body as GenerateRequestBody) || {};
 
-    if (!description || !description.trim()) {
+    if (!description?.trim()) {
       res.status(400).json({ error: "Description is required" });
       return;
     }
@@ -42,7 +61,6 @@ export default async function handler(req: any, res: any) {
       timestamp: new Date().toISOString(),
     };
 
-    // 👇 Critical: Skip ngrok browser warning
     const webhookRes = await fetch(webhookUrl, {
       method: "POST",
       headers: {
@@ -54,14 +72,19 @@ export default async function handler(req: any, res: any) {
 
     const text = await webhookRes.text();
 
-    // ✅ Return job ID regardless, so frontend can start polling
+    Object.entries(corsHeaders).forEach(([k, v]) => res.setHeader(k, v));
     res.status(webhookRes.ok ? 200 : 500).json({
       job_id: jobId,
       status: webhookRes.ok ? "queued" : "failed",
-      message: webhookRes.ok ? "Webhook sent successfully" : text,
+      message: webhookRes.ok
+        ? "Webhook sent successfully"
+        : text || "Webhook failed",
     });
-  } catch (err: any) {
-    console.error("❌ /api/generate error:", err);
-    res.status(500).json({ error: err.message || "Internal server error" });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Internal server error";
+    console.error("❌ /api/generate error:", message);
+    Object.entries(corsHeaders).forEach(([k, v]) => res.setHeader(k, v));
+    res.status(500).json({ error: message });
   }
 }

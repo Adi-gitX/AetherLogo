@@ -14,12 +14,12 @@ export interface LogoVariant {
 
 export interface GenerateLogoResponse {
   job_id: string;
-  status: string;
+  status: "queued" | "failed";
   message?: string;
 }
 
 export interface JobResultResponse {
-  status: "queued" | "processing" | "completed" | "failed";
+  status: "queued" | "processing" | "completed" | "failed" | "not_found";
   variants?: LogoVariant[];
   error?: string;
 }
@@ -27,8 +27,6 @@ export interface JobResultResponse {
 export const generateLogo = async (
   payload: GenerateLogoPayload
 ): Promise<GenerateLogoResponse> => {
-  console.log("Calling backend with payload:", payload);
-
   const response = await fetch("/api/generate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -46,8 +44,11 @@ export const generateLogo = async (
 export const getJobResult = async (
   jobId: string
 ): Promise<JobResultResponse> => {
-  const url = `/results/${jobId}.json`;
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) return { status: "queued" };
-  return res.json();
+  try {
+    const res = await fetch(`/api/results/${jobId}`, { cache: "no-store" });
+    if (res.ok) return res.json();
+  } catch (e) {
+    console.warn("⚠️ Fetch failed:", e);
+  }
+  return { status: "queued" };
 };
