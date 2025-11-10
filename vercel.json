@@ -1,8 +1,21 @@
 {
+  "version": 2,
+  "framework": "nextjs",
+  "buildCommand": "bun run build || npm run build",
+  "outputDirectory": ".next",
+  "env": {
+    "NODE_ENV": "production",
+    "VITE_RESULT_BASE_URL": "https://commetapp.vercel.app",
+  "VITE_N8N_WEBHOOK_URL": "https://indiscernibly-biochemic-agnes.ngrok-free.dev/webhook/commet_generate_logo",
+  "N8N_WEBHOOK_URL": "https://indiscernibly-biochemic-agnes.ngrok-free.dev/webhook/commet_generate_logo",
+  "DATABASE_URL": "postgres://avnadmin:REDACTED@pg-177146a0-adityakammati3-9e2c.i.aivencloud.com:20258/defaultdb?sslmode=require",
+    "RESULTS_DIR": "./public/results",
+    "LOG_LEVEL": "info"
+  },
   "rewrites": [
     {
-      "source": "/results/:job_id",
-      "destination": "/api/results/:job_id"
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
     }
   ]
 }

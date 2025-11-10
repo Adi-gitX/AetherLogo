@@ -27,18 +27,13 @@ export interface JobResultResponse {
 export const generateLogo = async (
   payload: GenerateLogoPayload
 ): Promise<GenerateLogoResponse> => {
-  const response = await fetch("/api/generate", {
+  const res = await fetch("/api/generate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Failed to trigger generation: ${text}`);
-  }
-
-  return response.json();
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
 };
 
 export const getJobResult = async (
@@ -48,7 +43,7 @@ export const getJobResult = async (
     const res = await fetch(`/api/results/${jobId}`, { cache: "no-store" });
     if (res.ok) return res.json();
   } catch (e) {
-    console.warn("⚠️ Fetch failed:", e);
+    console.warn("⚠️ Result fetch failed:", e);
   }
   return { status: "queued" };
 };

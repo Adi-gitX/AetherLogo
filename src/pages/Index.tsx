@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Layout from "@/components/Layout";
 import Hero from "@/components/Hero";
 import LogoForm from "@/components/LogoForm";
@@ -9,56 +9,68 @@ import { useToast } from "@/hooks/use-toast";
 
 type ViewState = "form" | "generating" | "results";
 
-const Index = () => {
-  const [viewState, setViewState] = useState<ViewState>("form");
-  const [logoVariants, setLogoVariants] = useState<LogoVariant[]>([]);
+interface LogoFormData {
+  description: string;
+  style?: string;
+  colors?: string[];
+  files?: File[];
+}
+
+const Index = (): JSX.Element => {
+  const [view, setView] = useState<ViewState>("form");
+  const [logos, setLogos] = useState<LogoVariant[]>([]);
   const { toast } = useToast();
+  const isCancelled = useRef(false);
 
-  const handleFormSubmit = async (formData: any) => {
+  useEffect(() => {
+    return () => {
+      // When component unmounts, cancel any ongoing polling
+      isCancelled.current = true;
+    };
+  }, []);
+
+  const handleSubmit = async (formData: LogoFormData): Promise<void> => {
     try {
-      console.log(
-        "User clicked Generate. Sending request to backend with payload:",
-        formData
-      );
+      setView("generating");
 
-      // Transition UI to generating state
-      setViewState("generating");
+      // Trigger backend to start logo generation
+      const { job_id } = await generateLogo(formData);
 
-      // Trigger logo generation API (→ /api/generate → n8n webhook)
-      const response = await generateLogo(formData);
-      console.log("Job created:", response.job_id);
-
-      // Begin polling for result
-      const pollInterval = 3000; // every 3s
-      const maxAttempts = 40; // total ~2 minutes
       let attempts = 0;
+      const maxAttempts = 40; // ~2 minutes
+      const pollInterval = 3000; // 3s between polls
 
       const pollForResult = async (): Promise<void> => {
+        if (isCancelled.current) return; // stop if unmounted
+
         attempts++;
-        console.log(
-          `Polling attempt ${attempts}/${maxAttempts} for job: ${response.job_id}`
-        );
+        try {
+          const result = await getJobResult(job_id);
 
-        const result = await getJobResult(response.job_id);
-        console.log("Result response:", result);
+          if (result.status === "completed" && result.variants) {
+            setLogos(result.variants);
+            setView("results");
+            return;
+          }
 
-        if (result.status === "completed" && result.variants) {
-          console.log("Logo generation complete. Variants:", result.variants);
-          setLogoVariants(result.variants);
-          setViewState("results");
-          return;
-        }
+          if (result.status === "failed") {
+            throw new Error(result.error || "Logo generation failed");
+          }
 
-        if (result.status === "failed") {
-          throw new Error(result.error || "Logo generation failed");
-        }
+          if (attempts < maxAttempts) {
+            await new Promise((resolve) => setTimeout(resolve, pollInterval));
+            return pollForResult();
+          }
 
-        // Retry polling until complete or timed out
-        if (attempts < maxAttempts) {
-          await new Promise((resolve) => setTimeout(resolve, pollInterval));
-          return pollForResult();
-        } else {
           throw new Error("Logo generation timed out. Please try again.");
+        } catch (error) {
+          console.warn("Polling error:", error);
+          if (attempts < maxAttempts) {
+            await new Promise((resolve) => setTimeout(resolve, pollInterval));
+            return pollForResult();
+          } else {
+            throw error;
+          }
         }
       };
 
@@ -70,38 +82,38 @@ const Index = () => {
         description:
           error instanceof Error
             ? error.message
-            : "There was an unexpected error while generating your logo. Please try again.",
+            : "Unexpected error while generating your logo. Please try again.",
         variant: "destructive",
       });
-      setViewState("form");
+      setView("form");
     }
   };
 
-  const handleProgressComplete = () => {
-    setViewState("results");
+  const handleRegenerate = (): void => {
+    setLogos([]);
+    setView("form");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleRegenerate = () => {
-    setLogoVariants([]);
-    setViewState("form");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  const handleProgressComplete = (): void => {
+    setView("results");
   };
 
   return (
     <Layout>
-      {viewState === "form" && (
+      {view === "form" && (
         <>
           <Hero />
-          <LogoForm onSubmit={handleFormSubmit} />
+          <LogoForm onSubmit={handleSubmit} />
         </>
       )}
 
-      {viewState === "generating" && (
+      {view === "generating" && (
         <ProgressBar onComplete={handleProgressComplete} />
       )}
 
-      {viewState === "results" && (
-        <Gallery variants={logoVariants} onRegenerate={handleRegenerate} />
+      {view === "results" && (
+        <Gallery variants={logos} onRegenerate={handleRegenerate} />
       )}
     </Layout>
   );

@@ -21,14 +21,14 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<JobResult | { error: string }>
 ): Promise<void> {
+  Object.entries(corsHeaders).forEach(([k, v]) => res.setHeader(k, v));
+
   if (req.method === "OPTIONS") {
-    Object.entries(corsHeaders).forEach(([k, v]) => res.setHeader(k, v));
     res.status(200).end("ok");
     return;
   }
 
   if (req.method !== "GET") {
-    Object.entries(corsHeaders).forEach(([k, v]) => res.setHeader(k, v));
     res.status(405).json({ error: "Method not allowed" });
     return;
   }
@@ -40,6 +40,7 @@ export default async function handler(
   }
 
   try {
+    // 1️⃣ Try local file cache
     const filePath = path.join(
       process.cwd(),
       "public",
@@ -52,6 +53,7 @@ export default async function handler(
       return;
     }
 
+    // 2️⃣ Try database fallback
     if (process.env.DATABASE_URL) {
       const { Client } = await import("pg");
       const client = new Client({
@@ -66,21 +68,15 @@ export default async function handler(
       await client.end();
 
       if (rows.length > 0) {
-        const row = rows[0];
-        res.status(200).json({
-          job_id: row.job_id,
-          status: row.status,
-          variants: row.variants,
-          created_at: row.created_at,
-        });
+        res.status(200).json(rows[0]);
         return;
       }
     }
 
-    res.status(404).json({ error: "Result not found", job_id: jobId });
+    res.status(404).json({ error: "Result not found" });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal error";
-    console.error("❌ /api/results/:job_id failed:", message);
+    console.error("❌ /api/results/[job_id] failed:", message);
     res.status(500).json({ error: message });
   }
 }

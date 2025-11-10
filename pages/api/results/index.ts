@@ -9,19 +9,13 @@ const corsHeaders: Record<string, string> = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-// In-memory cache (useful for serverless + dev)
+// simple in-memory cache
 const memoryStore: Record<string, unknown> = {};
-
-interface ResultPayload {
-  job_id: string;
-  status?: string;
-  variants?: unknown[];
-}
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
-): Promise<void> {
+) {
   Object.entries(corsHeaders).forEach(([k, v]) => res.setHeader(k, v));
 
   if (req.method === "OPTIONS") {
@@ -29,21 +23,13 @@ export default async function handler(
     return;
   }
 
-  // 🟢 GET /api/results?job_id=...
+  // ✅ GET: fetch results
   if (req.method === "GET") {
     const jobId = req.query.job_id as string;
-    if (!jobId) {
-      res.status(400).json({ error: "Missing job_id parameter" });
-      return;
-    }
+    if (!jobId) return res.status(400).json({ error: "Missing job_id" });
 
-    // 1) Memory store
-    if (memoryStore[jobId]) {
-      res.status(200).json(memoryStore[jobId]);
-      return;
-    }
+    if (memoryStore[jobId]) return res.status(200).json(memoryStore[jobId]);
 
-    // 2) Local file
     try {
       const filePath = path.join(
         process.cwd(),
@@ -57,10 +43,9 @@ export default async function handler(
         return;
       }
     } catch (error) {
-      console.warn("/api/results GET file read failed", error);
+      console.warn("⚠️ Failed reading result file:", error);
     }
 
-    // 3) Database fallback
     if (process.env.DATABASE_URL) {
       try {
         const { Client } = await import("pg");
@@ -74,13 +59,12 @@ export default async function handler(
           [jobId]
         );
         await client.end();
-
         if (result.rows.length > 0) {
           res.status(200).json(result.rows[0]);
           return;
         }
       } catch (dbErr) {
-        console.warn("/api/results GET DB read failed", dbErr);
+        console.warn("⚠️ DB read failed:", dbErr);
       }
     }
 
@@ -88,41 +72,32 @@ export default async function handler(
     return;
   }
 
-  // 🟢 POST /api/results — n8n sends back generation result
+  // ✅ POST: store new result (from n8n webhook)
   if (req.method === "POST") {
-    const body = (req.body || {}) as ResultPayload;
-    const { job_id: jobId, status, variants } = body;
-
-    if (!jobId) {
-      res.status(400).json({ error: "job_id is required" });
-      return;
-    }
+    const { job_id, status = "completed", variants = [] } = req.body || {};
+    if (!job_id) return res.status(400).json({ error: "job_id is required" });
 
     const result = {
-      job_id: jobId,
-      status: status || "completed",
-      variants: variants || [],
+      job_id,
+      status,
+      variants,
       timestamp: new Date().toISOString(),
     };
 
-    // 1) Memory cache
-    memoryStore[jobId] = result;
+    memoryStore[job_id] = result;
 
-    // 2) Disk storage
     try {
       const dir = path.join(process.cwd(), "public", "results");
       await fs.promises.mkdir(dir, { recursive: true });
-      const filePath = path.join(dir, `${jobId}.json`);
       await fs.promises.writeFile(
-        filePath,
+        path.join(dir, `${job_id}.json`),
         JSON.stringify(result, null, 2),
         "utf8"
       );
     } catch (err) {
-      console.warn("/api/results write failed", err);
+      console.warn("⚠️ File write failed:", err);
     }
 
-    // 3) DB write
     if (process.env.DATABASE_URL) {
       try {
         const { Client } = await import("pg");
@@ -144,15 +119,15 @@ export default async function handler(
            VALUES ($1, $2, $3)
            ON CONFLICT (job_id)
            DO UPDATE SET status = EXCLUDED.status, variants = EXCLUDED.variants`,
-          [jobId, result.status, JSON.stringify(result.variants)]
+          [job_id, status, JSON.stringify(variants)]
         );
         await client.end();
       } catch (dbErr) {
-        console.warn("/api/results DB write failed", dbErr);
+        console.warn("⚠️ DB write failed:", dbErr);
       }
     }
 
-    res.status(200).json({ success: true, job_id: jobId });
+    res.status(200).json({ success: true, job_id });
     return;
   }
 
